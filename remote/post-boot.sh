@@ -4,6 +4,10 @@ set -euo pipefail
 STACK="${HOME}/l40s-voice-stack"
 cd "$STACK"
 
+# Pause idle watchdog pendant post-boot (timer OnBootSec=5min sinon stop pendant vLLM)
+systemctl --user stop voice-idle-watchdog.timer 2>/dev/null || true
+systemctl --user stop voice-idle-watchdog.service 2>/dev/null || true
+
 # Reset idle timer (évite stop auto pendant post-boot / chargement vLLM)
 mkdir -p "${HOME}/.voice-stack"
 now=$(date +%s)
@@ -35,6 +39,10 @@ tmux new-window -t voice -n web \
   "cd $STACK && source .venv/bin/activate && set -a && source .env && set +a && env -u LD_LIBRARY_PATH python voice_chat.py --web --port 8080 2>&1 | tee web.log"
 
 echo "Services lancés (tmux session voice)."
+
+if [[ "${POST_BOOT_SKIP_WAIT:-0}" == "1" ]]; then
+  echo "Healthcheck ignoré (POST_BOOT_SKIP_WAIT=1) — vLLM charge en arrière-plan."
+else
 echo "Attente vLLM + TTS…"
 
 ready=0
@@ -55,6 +63,7 @@ done
 
 if [[ "$ready" != "1" ]]; then
   echo "Attention: timeout healthcheck — voir tmux attach -t voice"
+fi
 fi
 
 # Idle auto-stop (30 min sans interaction)

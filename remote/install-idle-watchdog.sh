@@ -25,7 +25,7 @@ cat > "$UNIT_DIR/voice-idle-watchdog.timer" <<EOF
 Description=Check voice stack idle every 5 minutes
 
 [Timer]
-OnBootSec=5min
+OnBootSec=20min
 OnUnitActiveSec=5min
 Persistent=true
 
