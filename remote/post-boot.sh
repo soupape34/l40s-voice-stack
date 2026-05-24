@@ -38,15 +38,18 @@ echo "Services lancés (tmux session voice)."
 echo "Attente vLLM + TTS…"
 
 ready=0
-for _ in $(seq 1 60); do
-  if curl -sf localhost:8000/v1/models >/dev/null 2>&1 \
-     && curl -sf localhost:8002/health >/dev/null 2>&1 \
-     && curl -sf localhost:8080/voice/status >/dev/null 2>&1; then
+for i in $(seq 1 60); do
+  vllm=0 tts=0 web=0
+  curl -sf localhost:8000/v1/models >/dev/null 2>&1 && vllm=1
+  curl -sf localhost:8002/health >/dev/null 2>&1 && tts=1
+  curl -sf localhost:8080/voice/status >/dev/null 2>&1 && web=1
+  if [[ "$vllm" == "1" && "$tts" == "1" && "$web" == "1" ]]; then
     echo "Tous les services répondent."
     curl -s localhost:8002/health
     ready=1
     break
   fi
+  echo "Healthcheck $i/60 — vLLM=$vllm TTS=$tts web=$web"
   sleep 10
 done
 

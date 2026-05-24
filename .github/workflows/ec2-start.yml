@@ -32,6 +32,8 @@ jobs:
           echo "État actuel: $STATE"
           if [[ "$STATE" == "stopped" ]]; then
             aws ec2 start-instances --instance-ids "$EC2_INSTANCE_ID"
+          elif [[ "$STATE" == "pending" || "$STATE" == "stopping" ]]; then
+            echo "Attente fin de transition ($STATE)…"
           elif [[ "$STATE" != "running" ]]; then
             echo "État inattendu: $STATE" >&2
             exit 1
@@ -48,7 +50,7 @@ jobs:
 
       - name: Post-boot
         run: |
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15"
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ServerAliveCountMax=30"
           ok=0
           for i in $(seq 1 36); do
             if ssh $SSH_OPTS ubuntu@"$IP" echo ok 2>/dev/null; then

@@ -31,6 +31,12 @@ read_ts() {
 boot=$(read_ts "$BOOT_FILE" "$now")
 last=$(read_ts "$ACTIVITY_FILE" "$boot")
 
+# Grace après boot OS (évite stop avant post-boot / reset des timestamps)
+uptime_sec=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)
+if (( uptime_sec < grace_sec )); then
+  exit 0
+fi
+
 if (( now - boot < grace_sec )); then
   exit 0
 fi
