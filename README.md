@@ -59,7 +59,7 @@ Setup secrets/variables : voir [terraform/README.md](terraform/README.md).
 |--------|--------|
 | `./deploy/status.sh` | État instance, IP, coût |
 | `./deploy/up.sh` | Start + sync code + post-boot + services |
-| `./deploy/down.sh` | Persist modèles + stop EC2 |
+| `./deploy/down.sh` | Alias de `stop.sh -y` |
 | `./deploy/start.sh` | Start EC2 seulement |
 | `./deploy/stop.sh` | Stop EC2 (avec confirmation) |
 | `./deploy/sync.sh` | Push code sans toucher venv/modèles |
@@ -76,7 +76,7 @@ Sur une L40S vierge :
 huggingface-cli login
 ./install.sh
 cp .env.example .env
-./deploy/up.sh --no-sync   # ou start-all.sh sur la machine
+./deploy/up.sh --no-sync   # post-boot via remote/post-boot.sh
 ```
 
 ## Architecture services (tmux `voice`)

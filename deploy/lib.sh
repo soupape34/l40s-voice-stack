@@ -93,15 +93,6 @@ get_public_ip() {
   echo "$ip"
 }
 
-ssh_base() {
-  load_config
-  local ip="${EC2_PUBLIC_IP:-}"
-  if [[ -z "$ip" || "$ip" == "None" ]]; then
-    ip="$(get_public_ip)"
-  fi
-  ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 -i "$SSH_KEY" "${SSH_USER}@${ip}"
-}
-
 ssh_cmd() {
   load_config
   local ip="${EC2_PUBLIC_IP:-}"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Chat vocal : Parakeet STT → Gemma 4 26B (vLLM) → Qwen3 TTS 0.6B.
-WebSocket duplex : STT partiel, TTS par phrases, audio streamé, barge-in.
+WebSocket duplex : STT, TTS par phrases, audio streamé, barge-in.
 """
 
 import os
@@ -10,8 +10,6 @@ os.environ.pop("LD_LIBRARY_PATH", None)
 
 import argparse
 import asyncio
-import base64
-import json
 import sys
 import tempfile
 from collections.abc import Iterator
@@ -23,13 +21,13 @@ from openai import OpenAI
 
 from activity import mark_boot, touch_activity
 from stt import backend_name, transcribe, warmup
-from voice_session import ParlorVoiceSession, SentenceSplitter
+from voice_session import ParlorVoiceSession
 
 load_dotenv()
 load_dotenv(".env.example")
 
 VLLM_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
-TTS_URL = os.environ.get("TTS_BASE_URL", "http://localhost:8001")
+TTS_URL = os.environ.get("TTS_BASE_URL", "http://localhost:8002")
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "128"))
 SYSTEM = os.environ.get(
     "SYSTEM_PROMPT",
@@ -98,55 +96,6 @@ def synthesize(text: str, out_path: str) -> None:
         f.write(synthesize_bytes(text))
 
 
-def _sse(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-def _pipeline_llm_tts_stream(text: str) -> Iterator[str]:
-    """LLM stream + TTS par phrases (SSE)."""
-    yield _sse("status", {"phase": "llm", "label": "Réflexion…"})
-    yield _sse("user", {"text": text})
-
-    splitter = SentenceSplitter()
-    parts: list[str] = []
-    chunk_idx = 0
-
-    for token in llm_reply_stream(text):
-        parts.append(token)
-        yield _sse("token", {"t": token})
-        for sentence in splitter.push(token):
-            yield _sse("status", {"phase": "tts", "label": "Synthèse…"})
-            wav = synthesize_bytes(sentence)
-            yield _sse(
-                "audio_chunk",
-                {"index": chunk_idx, "data": base64.b64encode(wav).decode("ascii")},
-            )
-            chunk_idx += 1
-
-    rest = splitter.flush()
-    reply = "".join(parts).strip()
-    yield _sse("reply", {"text": reply})
-    if rest:
-        yield _sse("status", {"phase": "tts", "label": "Synthèse…"})
-        wav = synthesize_bytes(rest)
-        yield _sse(
-            "audio_chunk",
-            {"index": chunk_idx, "data": base64.b64encode(wav).decode("ascii")},
-        )
-    yield _sse("done", {})
-
-
-def pipeline_stream_from_audio(audio_path: str, _out_wav: str) -> Iterator[str]:
-    yield _sse("status", {"phase": "stt", "label": "Transcription…"})
-    user_text = transcribe(audio_path)
-    yield _sse("user", {"text": user_text})
-    yield from _pipeline_llm_tts_stream(user_text)
-
-
-def pipeline_stream_from_text(text: str, _out_wav: str) -> Iterator[str]:
-    yield from _pipeline_llm_tts_stream(text)
-
-
 def pipeline_from_audio(audio_path: str, out_wav: str) -> tuple[str, str]:
     user_text = transcribe(audio_path)
     reply = llm_reply(user_text)
@@ -164,8 +113,7 @@ def pipeline_from_text(text: str, out_wav: str | None) -> str:
 def run_web(port: int):
     from pathlib import Path
 
-    from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
-    from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+    from fastapi import FastAPI, File, Form, UploadFile, WebSocket
     import uvicorn
 
     @asynccontextmanager
@@ -184,13 +132,16 @@ def run_web(port: int):
 
     app = FastAPI(lifespan=lifespan)
     template_path = Path(__file__).parent / "web_ui.html"
-    outputs: dict[str, str] = {}
 
     def render_html() -> str:
-        return template_path.read_text(encoding="utf-8").replace("{{STT_LABEL}}", backend_name())
+        return template_path.read_text(encoding="utf-8").replace(
+            "{{STT_LABEL}}", backend_name()
+        )
 
     @app.get("/")
     def index():
+        from fastapi.responses import HTMLResponse
+
         return HTMLResponse(render_html())
 
     @app.post("/voice/clone")
@@ -265,54 +216,6 @@ def run_web(port: int):
             loop=asyncio.get_running_loop(),
         )
         await session.run()
-
-    @app.websocket("/ws/voice")
-    async def ws_voice_legacy(ws: WebSocket):
-        await ws.accept()
-        session = ParlorVoiceSession(
-            ws,
-            llm_stream_fn=llm_reply_stream,
-            tts_fn=synthesize_bytes,
-            loop=asyncio.get_running_loop(),
-        )
-        await session.run()
-
-    def _stream(body: Iterator[str]):
-        return StreamingResponse(body, media_type="text/event-stream")
-
-    @app.post("/talk-stream")
-    async def talk_stream(audio: UploadFile = File(...)):
-        touch_activity()
-        suffix = os.path.splitext(audio.filename or "in.wav")[1] or ".wav"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(await audio.read())
-            in_path = tmp.name
-
-        def generate():
-            try:
-                yield from pipeline_stream_from_audio(in_path, "")
-            except Exception as exc:
-                yield _sse("error", {"message": str(exc)})
-
-        return _stream(generate())
-
-    @app.post("/talk-text-stream")
-    async def talk_text_stream(text: str = Form(...)):
-        touch_activity()
-        def generate():
-            try:
-                yield from pipeline_stream_from_text(text, "")
-            except Exception as exc:
-                yield _sse("error", {"message": str(exc)})
-
-        return _stream(generate())
-
-    @app.get("/audio/{aid}")
-    def get_audio(aid: str):
-        path = outputs.get(aid)
-        if not path or not os.path.exists(path):
-            return HTMLResponse("not found", status_code=404)
-        return FileResponse(path, media_type="audio/wav")
 
     uvicorn.run(app, host="0.0.0.0", port=port)
 

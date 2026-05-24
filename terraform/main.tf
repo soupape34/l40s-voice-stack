@@ -18,10 +18,6 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
-data "aws_instance" "voice" {
-  instance_id = var.instance_id
-}
-
 resource "aws_iam_role" "voice_ec2" {
   name = "${var.project_name}-ec2-role"
 

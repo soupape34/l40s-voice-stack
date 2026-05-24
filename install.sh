@@ -58,6 +58,5 @@ huggingface-cli download nvidia/parakeet-tdt-0.6b-v3 parakeet-tdt-0.6b-v3.nemo |
 echo ""
 echo "=== Installation terminée ==="
 echo "  cp .env.example .env"
-echo "  ./start-vllm.sh    # terminal 1"
-echo "  ./start-tts.sh     # terminal 2"
-echo "  source .venv/bin/activate && python voice_chat.py --web"
+echo "  ./deploy/up.sh       # start + services (depuis Mac)"
+echo "  # ou manuellement : ./start-vllm.sh | ./start-tts.sh | voice_chat.py --web"
