@@ -21,6 +21,7 @@ import httpx
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from activity import mark_boot, touch_activity
 from stt import backend_name, transcribe, warmup
 from voice_session import ParlorVoiceSession, SentenceSplitter
 
@@ -175,6 +176,8 @@ def run_web(port: int):
             print("STT prêt.")
         except Exception as exc:
             print(f"STT warmup ignoré ({exc})")
+        mark_boot()
+        print("Activity tracker prêt (idle auto-stop).")
         yield
         if _tts_client is not None:
             _tts_client.close()
@@ -195,6 +198,7 @@ def run_web(port: int):
         audio: UploadFile = File(...),
         ref_text: str = Form(""),
     ):
+        touch_activity()
         raw = await audio.read()
         if not raw:
             return {"status": "error", "message": "Fichier audio vide"}
@@ -227,6 +231,7 @@ def run_web(port: int):
 
     @app.post("/voice/reset")
     async def voice_reset():
+        touch_activity()
         try:
             r = _get_tts().post(f"{TTS_URL}/v1/voice/reset", timeout=30.0)
             r.raise_for_status()
@@ -277,6 +282,7 @@ def run_web(port: int):
 
     @app.post("/talk-stream")
     async def talk_stream(audio: UploadFile = File(...)):
+        touch_activity()
         suffix = os.path.splitext(audio.filename or "in.wav")[1] or ".wav"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(await audio.read())
@@ -292,6 +298,7 @@ def run_web(port: int):
 
     @app.post("/talk-text-stream")
     async def talk_text_stream(text: str = Form(...)):
+        touch_activity()
         def generate():
             try:
                 yield from pipeline_stream_from_text(text, "")

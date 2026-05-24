@@ -36,6 +36,23 @@ chmod +x deploy/*.sh remote/*.sh *.sh
 ./deploy/down.sh      # migre modèles HF → EBS + stop EC2
 ```
 
+### Auto-stop idle (30 min)
+
+Sans interaction WebSocket / texte / clone → l’instance **s’arrête seule** (persist modèles inclus).
+
+- Grace **15 min** après boot (chargement vLLM)
+- Config : `IDLE_MINUTES`, `IDLE_GRACE_MINUTES` dans `.env`
+- Nécessite IAM : `cd terraform && terraform apply`
+
+### GitHub Actions
+
+| Workflow | Action |
+|----------|--------|
+| **EC2 Start** | Start + post-boot (manuel) |
+| **EC2 Stop** | Persist + stop (manuel + cron 23h UTC) |
+
+Setup secrets/variables : voir [terraform/README.md](terraform/README.md).
+
 ## Commandes deploy
 
 | Script | Action |

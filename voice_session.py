@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable, Iterator
 
 from fastapi import WebSocketDisconnect
+from activity import touch_activity
 from stt import transcribe
 
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+")
@@ -116,6 +117,7 @@ class ParlorVoiceSession:
                 raw = await self.ws.receive_text()
                 msg = json.loads(raw)
                 if msg.get("type") == "interrupt":
+                    touch_activity()
                     self.interrupted.set()
                     self.gen += 1
                 else:
@@ -143,6 +145,11 @@ class ParlorVoiceSession:
         audio_b64 = msg.get("audio")
         text_in = msg.get("text", "").strip()
 
+        if not audio_b64 and not text_in:
+            return
+
+        touch_activity()
+
         if audio_b64:
             wav_bytes = base64.b64decode(audio_b64)
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -162,8 +169,6 @@ class ParlorVoiceSession:
                 return
         elif text_in:
             user_text = text_in
-        else:
-            return
 
         if cancel():
             return

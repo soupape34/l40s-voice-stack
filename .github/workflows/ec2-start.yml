@@ -1,0 +1,64 @@
+name: EC2 Start
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check config
+        run: |
+          test -n "$EC2_INSTANCE_ID" || { echo "Définir vars.EC2_INSTANCE_ID dans GitHub"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Start instance
+        run: |
+          STATE=$(aws ec2 describe-instances --instance-ids "$EC2_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].State.Name' --output text)
+          echo "État actuel: $STATE"
+          if [[ "$STATE" == "stopped" ]]; then
+            aws ec2 start-instances --instance-ids "$EC2_INSTANCE_ID"
+          elif [[ "$STATE" != "running" ]]; then
+            echo "État inattendu: $STATE" >&2
+            exit 1
+          fi
+          aws ec2 wait instance-running --instance-ids "$EC2_INSTANCE_ID"
+          IP=$(aws ec2 describe-instances --instance-ids "$EC2_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          echo "IP=$IP" >> "$GITHUB_ENV"
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Post-boot
+        run: |
+          for i in $(seq 1 36); do
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+              ubuntu@"$IP" echo ok 2>/dev/null; then
+              break
+            fi
+            echo "SSH $i/36…"
+            sleep 10
+          done
+          ssh -o StrictHostKeyChecking=no ubuntu@"$IP" 'bash -s' < remote/post-boot.sh
+
+      - name: Summary
+        run: |
+          echo "### Instance démarrée" >> "$GITHUB_STEP_SUMMARY"
+          echo "- IP: \`$IP\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tunnel local: \`./deploy/tunnel.sh\`" >> "$GITHUB_STEP_SUMMARY"

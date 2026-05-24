@@ -1,0 +1,62 @@
+name: EC2 Stop
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Filet de sécurité 23h UTC (~0h Paris hiver)
+    - cron: "0 23 * * *"
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check config
+        run: |
+          test -n "$EC2_INSTANCE_ID" || { echo "Définir vars.EC2_INSTANCE_ID"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Instance state
+        id: state
+        run: |
+          STATE=$(aws ec2 describe-instances --instance-ids "$EC2_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].State.Name' --output text)
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+          echo "État: $STATE"
+
+      - name: Setup SSH
+        if: steps.state.outputs.state == 'running'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Persist models before stop
+        if: steps.state.outputs.state == 'running'
+        continue-on-error: true
+        run: |
+          IP=$(aws ec2 describe-instances --instance-ids "$EC2_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 ubuntu@"$IP" \
+            'bash ~/l40s-voice-stack/remote/persist-models.sh' || true
+
+      - name: Stop instance
+        if: steps.state.outputs.state == 'running'
+        run: |
+          aws ec2 stop-instances --instance-ids "$EC2_INSTANCE_ID"
+          aws ec2 wait instance-stopped --instance-ids "$EC2_INSTANCE_ID"
+          echo "Instance arrêtée." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Already stopped
+        if: steps.state.outputs.state == 'stopped'
+        run: echo "Déjà arrêtée." >> "$GITHUB_STEP_SUMMARY"
