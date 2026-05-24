@@ -19,6 +19,9 @@ rsync -avz --delete \
   --exclude '*.log' \
   --exclude 'deploy/aws.env' \
   --exclude '__pycache__/' \
+  --exclude 'terraform/.terraform/' \
+  --exclude 'terraform/*.tfstate' \
+  --exclude 'terraform/*.tfstate.*' \
   "$ROOT/" "${SSH_USER}@${IP}:${REMOTE_DIR}/"
 
 echo "Sync terminé."
