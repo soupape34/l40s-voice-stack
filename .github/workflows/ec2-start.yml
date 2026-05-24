@@ -67,7 +67,7 @@ jobs:
           ssh $SSH_OPTS ubuntu@"$IP" \
             'systemctl --user stop voice-idle-watchdog.timer 2>/dev/null || true; mkdir -p ~/.voice-stack; now=$(date +%s); echo "$now" > ~/.voice-stack/boot_time; echo "$now" > ~/.voice-stack/last_activity'
           rsync -az -e "ssh $SSH_OPTS" remote/ "ubuntu@${IP}:l40s-voice-stack/remote/"
-          ssh $SSH_OPTS ubuntu@"$IP" 'POST_BOOT_SKIP_WAIT=1 bash -s' < remote/post-boot.sh
+          ssh $SSH_OPTS ubuntu@"$IP" 'bash -s' < remote/post-boot.sh
 
       - name: Summary
         run: |
