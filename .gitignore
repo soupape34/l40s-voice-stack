@@ -1,0 +1,27 @@
+.env
+.env.local
+deploy/aws.env
+deploy/*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv-tts/
+*.egg-info/
+.pytest_cache/
+
+# Logs & runtime
+*.log
+reply.wav
+test.wav
+outputs/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets
+*.pem
+**/huggingface/token

@@ -1,0 +1,10 @@
+#cloud-config
+package_update: true
+packages:
+  - ffmpeg
+  - git
+  - python3-venv
+  - python3-pip
+  - tmux
+runcmd:
+  - mkdir -p /root/l40s-voice-stack
