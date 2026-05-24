@@ -10,6 +10,7 @@ env:
 jobs:
   start:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check config
         run: |
@@ -47,15 +48,21 @@ jobs:
 
       - name: Post-boot
         run: |
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15"
+          ok=0
           for i in $(seq 1 36); do
-            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
-              ubuntu@"$IP" echo ok 2>/dev/null; then
+            if ssh $SSH_OPTS ubuntu@"$IP" echo ok 2>/dev/null; then
+              ok=1
               break
             fi
             echo "SSH $i/36…"
             sleep 10
           done
-          ssh -o StrictHostKeyChecking=no ubuntu@"$IP" 'bash -s' < remote/post-boot.sh
+          if [[ "$ok" != "1" ]]; then
+            echo "SSH indisponible" >&2
+            exit 1
+          fi
+          ssh $SSH_OPTS ubuntu@"$IP" 'bash -s' < remote/post-boot.sh
 
       - name: Summary
         run: |

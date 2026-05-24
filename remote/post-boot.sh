@@ -4,6 +4,12 @@ set -euo pipefail
 STACK="${HOME}/l40s-voice-stack"
 cd "$STACK"
 
+# Reset idle timer (évite stop auto pendant post-boot / chargement vLLM)
+mkdir -p "${HOME}/.voice-stack"
+now=$(date +%s)
+echo "$now" > "${HOME}/.voice-stack/boot_time"
+echo "$now" > "${HOME}/.voice-stack/last_activity"
+
 # Cache HF sur EBS si migré
 if [[ -d "${HOME}/.cache/huggingface-ebs" ]]; then
   mkdir -p "${HOME}/.cache"
@@ -17,6 +23,7 @@ chmod +x *.sh remote/*.sh 2>/dev/null || true
 
 # tmux : vLLM + TTS (.venv-tts) + web
 tmux kill-session -t voice 2>/dev/null || true
+tmux start-server 2>/dev/null || true
 
 tmux new-session -d -s voice -n vllm \
   "cd $STACK && source .venv/bin/activate && ./start-vllm.sh 2>&1 | tee vllm.log"
