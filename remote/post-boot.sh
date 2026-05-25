@@ -47,17 +47,18 @@ echo "Attente vLLM + TTS…"
 
 ready=0
 for i in $(seq 1 60); do
-  vllm=0 tts=0 web=0
+  vllm=0 tts=0 web=0 stt=0
   curl -sf localhost:8000/v1/models >/dev/null 2>&1 && vllm=1
   curl -sf localhost:8002/health >/dev/null 2>&1 && tts=1
   curl -sf localhost:8080/voice/status >/dev/null 2>&1 && web=1
-  if [[ "$vllm" == "1" && "$tts" == "1" && "$web" == "1" ]]; then
+  curl -sf localhost:8080/stt/health >/dev/null 2>&1 && stt=1
+  if [[ "$vllm" == "1" && "$tts" == "1" && "$web" == "1" && "$stt" == "1" ]]; then
     echo "Tous les services répondent."
     curl -s localhost:8002/health
     ready=1
     break
   fi
-  echo "Healthcheck $i/60 — vLLM=$vllm TTS=$tts web=$web"
+  echo "Healthcheck $i/60 — vLLM=$vllm TTS=$tts web=$web stt=$stt"
   sleep 10
 done
 

@@ -37,6 +37,8 @@ SYSTEM = os.environ.get(
 _history: list[dict] = []
 _llm_client: OpenAI | None = None
 _tts_client: httpx.Client | None = None
+_stt_ready = False
+_stt_error: str | None = None
 
 
 def _get_llm() -> OpenAI:
@@ -113,16 +115,21 @@ def pipeline_from_text(text: str, out_wav: str | None) -> str:
 def run_web(port: int):
     from pathlib import Path
 
-    from fastapi import FastAPI, File, Form, UploadFile, WebSocket
+    from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket
     import uvicorn
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        global _stt_ready, _stt_error
         print("Pré-chargement STT…")
         try:
             await asyncio.to_thread(warmup)
+            _stt_ready = True
+            _stt_error = None
             print("STT prêt.")
         except Exception as exc:
+            _stt_ready = False
+            _stt_error = str(exc)
             print(f"STT warmup ignoré ({exc})")
         mark_boot()
         print("Activity tracker prêt (idle auto-stop).")
@@ -205,6 +212,19 @@ def run_web(port: int):
             return r.json()
         except Exception as exc:
             return {"status": "error", "message": str(exc)}
+
+    @app.get("/stt/health")
+    async def stt_health():
+        if not _stt_ready:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "status": "error",
+                    "backend": backend_name(),
+                    "message": _stt_error or "STT warmup not ready",
+                },
+            )
+        return {"status": "ok", "backend": backend_name()}
 
     @app.websocket("/ws")
     async def ws_parlor(ws: WebSocket):
